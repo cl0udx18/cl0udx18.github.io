@@ -89,7 +89,19 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
   html{scroll-behavior:auto}
   .path::before,.path li{animation:none}
 }
+.htb-row {
+  display: grid;
+  grid-template-columns: 305px 1fr;
+  gap: 0;
+  padding: 4rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.htb-row h2 { margin: 0; font-weight: inherit; }
+.htb-content img { display: block; max-width: 100%; height: auto; }
 
+@media (max-width: 700px) {
+  .htb-row { grid-template-columns: 1fr; gap: 1.5rem; padding: 3rem 0; }
+}
 </style>
 </head>
 <body>
@@ -125,6 +137,18 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
         <p>I'm now moving toward cloud security and AI security: how AWS environments get misconfigured, and how AI systems built on cloud infrastructure can be attacked and defended.</p>
       </div>
     </section>
+
+    <section class="htb-row" id="hackthebox">
+  <h2>Hack The Box</h2>
+  <div class="htb-content">
+    <a href="https://app.hackthebox.com/public/users/2325658"
+       target="_blank" rel="noopener noreferrer">
+      <img src="https://www.htbbadge.tech/api/badge?user=2325658"
+           alt="Hack The Box badge for cl0udx: Master II, Level 66"
+           width="400">
+    </a>
+  </div>
+</section>
 
     <section id="focus">
       <h2>Focus</h2>
@@ -162,18 +186,7 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
   
 </section>
  
- <section id="hackthebox" class="htb">
-   <br>
-  <h2>Hack The Box</h2>
-
-  <a href="https://app.hackthebox.com/public/users/2325658"
-     target="_blank" rel="noopener noreferrer">
-    <img src="https://www.htbbadge.tech/api/badge?user=2325658"
-         alt="Hack The Box badge for cl0udx: Master II, Level 66"
-         width="329" height="88">
-  </a>
-   
-</section>
+ 
   </main>
 
   <footer>&copy; 2026 Rajas Bakshi</footer>
