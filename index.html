@@ -89,6 +89,29 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
   html{scroll-behavior:auto}
   .path::before,.path li{animation:none}
 }
+  .htb { max-width: 900px; margin: 3rem auto; padding: 0 1rem; }
+
+.htb-card {
+  display: block; max-width: 460px; padding: 1.25rem 1.5rem;
+  background: #111927; color: #e6edf3; text-decoration: none;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
+  transition: transform .15s, border-color .15s;
+}
+.htb-card:hover { transform: translateY(-2px); border-color: #9fef00; }
+
+.htb-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.htb-user { font-size: 1.1rem; font-weight: 600; }
+.htb-rank { padding: .2rem .7rem; border-radius: 999px; background: #9fef00; color: #0b1220; font-weight: 700; font-size: .85rem; }
+
+.htb-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+.htb-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: .7rem; text-align: center; }
+.htb-stats strong { display: block; font-size: 1.3rem; }
+.htb-stats span { font-size: .75rem; opacity: .7; }
+
+.htb-foot { margin-top: 1rem; font-size: .8rem; opacity: .65; }
+
+.htb-shot { display: block; max-width: 100%; height: auto; margin-top: 1.5rem;
+            border-radius: 10px; border: 1px solid rgba(255,255,255,.12); }
 </style>
 </head>
 <body>
@@ -157,6 +180,31 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
         </ul>
       </div>
     </section>
+    <section id="hackthebox" class="htb">
+  <h2>Hack The Box</h2>
+
+  <a class="htb-card"
+     href="https://profile.hackthebox.com/profile/019d237d-829d-734c-a515-9fa9db7fa752"
+     target="_blank" rel="noopener noreferrer"
+     aria-label="View my Hack The Box profile">
+    <div class="htb-head">
+      <span class="htb-user">cl0udx</span>
+      <span class="htb-rank">Master</span>
+    </div>
+    <div class="htb-stats">
+      <div><strong>66</strong><span>Level</span></div>
+      <div><strong>58,660</strong><span>Total XP</span></div>
+      <div><strong>32</strong><span>Weeks active</span></div>
+    </div>
+    <div class="htb-foot">Stats as of Nov 2026 · View live profile →</div>
+  </a>
+
+  <!-- Optional: your full screenshot below the card -->
+  <!--
+  <img class="htb-shot" src="images/htb-profile.png"
+       alt="Hack The Box profile: Master rank, Level 66, 58,660 XP" loading="lazy">
+  -->
+</section>
   </main>
 
   <footer>&copy; 2026 Rajas Bakshi</footer>
